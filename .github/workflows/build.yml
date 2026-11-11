@@ -1,3 +1,4 @@
+
 name: Compilar BlueChat APK
 
 on:
@@ -72,8 +73,42 @@ jobs:
       - name: Probar y compilar APK
         shell: bash
         run: |
+          set -uo pipefail
           cd "$BLUECHAT_SOURCE"
-          gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
+          LOG="$RUNNER_TEMP/bluechat-gradle.log"
+          set +e
+          gradle --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug > "$LOG" 2>&1
+          RESULTADO=$?
+          set -e
+          if [[ "$RESULTADO" -eq 0 ]]; then
+            echo 'Compilación correcta.'
+            tail -n 35 "$LOG"
+          else
+            echo '============================================='
+            echo 'ERROR REAL DEL COMPILADOR DE BLUECHAT'
+            echo '============================================='
+            REGEX='(^e: |^error:|\.kt:[0-9]+:[0-9]+|^> Task .*FAILED|^FAILURE:|^\* What went wrong:|^Execution failed for task|Could not resolve|Could not find|Unresolved reference|A failure occurred)'
+            grep -nE "$REGEX" "$LOG" | head -n 50 || true
+            echo '============================================='
+            echo 'Últimas 35 líneas del registro:'
+            tail -n 35 "$LOG"
+            echo '### BlueChat: errores de compilación' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Busca estas líneas en el registro (puedes hacer una captura):' >> "$GITHUB_STEP_SUMMARY"
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            grep -nE "$REGEX" "$LOG" | head -n 50 >> "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo 'También se publicará el registro completo como BlueChat-Gradle-ERROR.' >> "$GITHUB_STEP_SUMMARY"
+            exit "$RESULTADO"
+          fi
+
+      - name: Guardar registro de errores
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlueChat-Gradle-ERROR
+          path: ${{ runner.temp }}/bluechat-gradle.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verificar APK
         shell: bash
