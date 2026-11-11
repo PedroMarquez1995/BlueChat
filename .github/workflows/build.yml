@@ -1,11 +1,13 @@
-
 name: Compilar BlueChat APK
+
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
+
 permissions:
   contents: read
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -13,47 +15,70 @@ jobs:
     steps:
       - name: Obtener los archivos
         uses: actions/checkout@v4
+
       - name: Localizar o extraer BlueChat
         shell: bash
         run: |
           set -euo pipefail
           if [[ -f settings.gradle.kts ]]; then
             echo 'BLUECHAT_SOURCE=.' >> "$GITHUB_ENV"
-          elif [[ -f BlueChat-Android-Project.zip ]]; then
-            mkdir -p _bluechat_source
-            unzip -q BlueChat-Android-Project.zip -d _bluechat_source
-            if [[ -f _bluechat_source/BlueChat-Android-Project/settings.gradle.kts ]]; then
-              echo 'BLUECHAT_SOURCE=_bluechat_source/BlueChat-Android-Project' >> "$GITHUB_ENV"
-            else
-              echo 'No se encontró settings.gradle.kts dentro del ZIP' >&2
+            echo 'Proyecto Android detectado en la raiz.'
+          else
+            ARCHIVO_ZIP=''
+            for candidato in 'BlueChat-2.0-Redesign.zip' 'BlueChat-Android-Project.zip'; do
+              if [[ -f "$candidato" ]]; then
+                ARCHIVO_ZIP="$candidato"
+                break
+              fi
+            done
+            if [[ -z "$ARCHIVO_ZIP" ]]; then
+              echo 'ERROR: No se encontro un proyecto Android ni un ZIP compatible en la raiz.' >&2
+              echo 'Archivos encontrados:' >&2
+              ls -la >&2
               exit 1
             fi
-          else
-            echo 'Sube los archivos descomprimidos o BlueChat-Android-Project.zip' >&2
-            exit 1
+            echo "Extrayendo: $ARCHIVO_ZIP"
+            mkdir -p _bluechat_source
+            unzip -q "$ARCHIVO_ZIP" -d _bluechat_source
+            PROJECT_FILE="$(find _bluechat_source -type f -name settings.gradle.kts -print -quit)"
+            if [[ -z "$PROJECT_FILE" ]]; then
+              echo 'ERROR: El ZIP no contiene settings.gradle.kts.' >&2
+              exit 1
+            fi
+            PROJECT_DIR="$(dirname "$PROJECT_FILE")"
+            echo "BLUECHAT_SOURCE=$PROJECT_DIR" >> "$GITHUB_ENV"
+            echo "Proyecto encontrado en: $PROJECT_DIR"
           fi
+
       - name: Preparar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Preparar Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
+
       - name: Instalar Android SDK 35
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
       - name: Preparar Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+
       - name: Probar y compilar APK
         shell: bash
         run: |
           cd "$BLUECHAT_SOURCE"
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
+
       - name: Verificar APK
+        shell: bash
         run: test -s "$BLUECHAT_SOURCE/app/build/outputs/apk/debug/app-debug.apk"
+
       - name: Publicar BlueChat
         uses: actions/upload-artifact@v4
         with:
