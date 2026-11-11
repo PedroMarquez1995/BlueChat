@@ -1,3 +1,4 @@
+
 name: Compilar BlueChat APK
 on:
   workflow_dispatch:
@@ -37,7 +38,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Preparar Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
       - name: Instalar Android SDK 35
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Preparar Gradle 8.11.1
